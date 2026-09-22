@@ -37,11 +37,28 @@
 
 <div id="game-container"></div>
 <div class="instructions">
-  Online 1v1 Skill Tag • Customize keybinds and manage your account profile in the menu!
+  Online 1v1 Skill Tag • Flex Cosmetics, Practice VS AI Bots & Custom Keybinds!
 </div>
 
 <script>
-// --- ACCOUNT & PROFILE SYSTEM ---
+// --- COSMETICS CATALOG ---
+const COSMETICS = {
+  TITLES: [
+    { id: 'NONE', label: 'No Title', cost: 0, unlocked: true },
+    { id: 'ROOKIE', label: '[ROOKIE]', cost: 200, unlocked: false },
+    { id: 'PRO', label: '[PRO]', cost: 500, unlocked: false },
+    { id: 'TAG_GOD', label: '[TAG GOD]', cost: 1500, unlocked: false },
+    { id: 'UNTOUCHABLE', label: '[UNTOUCHABLE]', cost: 3000, unlocked: false }
+  ],
+  TRAILS: [
+    { id: 'DEFAULT', label: 'White Trail', color: 0xffffff, cost: 0, unlocked: true },
+    { id: 'NEON_GREEN', label: 'Neon Green Trail', color: 0x10b981, cost: 400, unlocked: false },
+    { id: 'FLAME', label: 'Flame Orange Trail', color: 0xf97316, cost: 800, unlocked: false },
+    { id: 'CYBER', label: 'Cyber Pink Trail', color: 0xec4899, cost: 1200, unlocked: false }
+  ]
+};
+
+// --- ACCOUNT & PROFILE MANAGER ---
 class AccountManager {
   constructor() {
     this.activeUser = localStorage.getItem('tag_active_user') || 'Player1';
@@ -53,7 +70,17 @@ class AccountManager {
     if (raw) {
       this.data = JSON.parse(raw);
     } else {
-      this.data = { username: this.activeUser, gold: 0, wins: 0, losses: 0, matches: 0 };
+      this.data = {
+        username: this.activeUser,
+        gold: 100,
+        wins: 0,
+        losses: 0,
+        matches: 0,
+        equippedTitle: 'NONE',
+        equippedTrail: 'DEFAULT',
+        unlockedTitles: ['NONE'],
+        unlockedTrails: ['DEFAULT']
+      };
       this.saveProfile();
     }
   }
@@ -72,11 +99,8 @@ class AccountManager {
   addStats(won, goldEarned) {
     this.data.gold += goldEarned;
     this.data.matches += 1;
-    if (won) {
-      this.data.wins += 1;
-    } else {
-      this.data.losses += 1;
-    }
+    if (won) this.data.wins += 1;
+    else this.data.losses += 1;
     this.saveProfile();
   }
 }
@@ -109,9 +133,9 @@ let userKeybinds = getSavedKeybinds();
 
 // --- CHARACTER ARCHETYPES ---
 const CHARACTERS = {
-  RUNNER: { name: 'Runner', speed: 240, dashDistance: 160, tagRadius: 45, cost: 0, unlocked: true, color: 0x3b82f6 },
-  LONG_STRIDER: { name: 'Long Strider', speed: 200, dashDistance: 260, tagRadius: 45, cost: 500, unlocked: false, color: 0x10b981 },
-  REACH_MASTER: { name: 'Reach Master', speed: 170, dashDistance: 140, tagRadius: 80, cost: 1000, unlocked: false, color: 0xf59e0b }
+  RUNNER: { name: 'Runner', speed: 240, dashDistance: 160, tagRadius: 45, color: 0x3b82f6 },
+  LONG_STRIDER: { name: 'Long Strider', speed: 200, dashDistance: 260, tagRadius: 45, color: 0x10b981 },
+  REACH_MASTER: { name: 'Reach Master', speed: 170, dashDistance: 140, tagRadius: 80, color: 0xf59e0b }
 };
 
 // --- PEERJS NETWORK MANAGER ---
@@ -165,10 +189,11 @@ const net = new NetworkManager();
 
 // --- PLAYER ENTITY CLASS ---
 class Player extends Phaser.GameObjects.Container {
-  constructor(scene, x, y, characterConfig, isIt = false) {
+  constructor(scene, x, y, characterConfig, isIt = false, profileData = null) {
     super(scene, x, y);
     this.scene = scene;
     this.isIt = isIt;
+    this.profile = profileData || account.data;
 
     this.stats = { ...characterConfig };
     this.tagCooldownDuration = 1000;
@@ -177,14 +202,27 @@ class Player extends Phaser.GameObjects.Container {
     this.isDashing = false;
     this.canTag = true;
 
+    // Visual Range Indicator
     this.rangeCircle = scene.add.graphics();
     this.add(this.rangeCircle);
 
+    // Player Body
     this.bodySprite = scene.add.circle(0, 0, 16, this.stats.color);
     this.add(this.bodySprite);
 
-    this.roleIndicator = scene.add.text(0, -28, isIt ? 'IT!' : '', {
-      fontSize: '14px',
+    // Flex Title & Username Badge
+    const titleObj = COSMETICS.TITLES.find(t => t.id === this.profile.equippedTitle);
+    const titleText = (titleObj && titleObj.id !== 'NONE') ? `${titleObj.label} ` : '';
+    
+    this.nameBadge = scene.add.text(0, -32, `${titleText}${this.profile.username}`, {
+      fontSize: '12px',
+      fontStyle: 'bold',
+      fill: '#f1f5f9'
+    }).setOrigin(0.5);
+    this.add(this.nameBadge);
+
+    this.roleIndicator = scene.add.text(0, -18, isIt ? 'IT!' : '', {
+      fontSize: '13px',
       fontStyle: 'bold',
       fill: '#ef4444'
     }).setOrigin(0.5);
@@ -202,15 +240,24 @@ class Player extends Phaser.GameObjects.Container {
 
     this.body.setVelocity(directionVector.x * dashSpeed, directionVector.y * dashSpeed);
 
+    // Dash Trail Visual Effect
+    const trailObj = COSMETICS.TRAILS.find(t => t.id === this.profile.equippedTrail) || COSMETICS.TRAILS[0];
+    const ghost = this.scene.add.circle(this.x, this.y, 14, trailObj.color, 0.6);
+    this.scene.tweens.add({
+      targets: ghost,
+      alpha: 0,
+      scale: 1.5,
+      duration: 250,
+      onComplete: () => ghost.destroy()
+    });
+
     this.scene.time.delayedCall(this.dashDuration, () => {
       this.isDashing = false;
     });
   }
 
   attemptTag(targetPlayer) {
-    if (!this.canTag || this.isDashing || !this.isIt) {
-      return false;
-    }
+    if (!this.canTag || this.isDashing || !this.isIt) return false;
 
     this.canTag = false;
     this.scene.time.delayedCall(this.tagCooldownDuration, () => {
@@ -247,7 +294,68 @@ class Player extends Phaser.GameObjects.Container {
   }
 }
 
-// --- MENU, ACCOUNT & LOBBY SCENE ---
+// --- BOT AI CONTROLLER (MULTIPLE DIFFICULTIES) ---
+class BotPlayer extends Player {
+  constructor(scene, x, y, characterConfig, isIt = false, level = 'MEDIUM') {
+    super(scene, x, y, characterConfig, isIt, { username: `Bot [${level}]`, equippedTitle: 'NONE', equippedTrail: 'DEFAULT' });
+    this.level = level;
+    this.setDifficultyStats();
+  }
+
+  setDifficultyStats() {
+    switch (this.level) {
+      case 'EASY':
+        this.dashChance = 0.01;
+        this.reactionDelay = 0.4;
+        break;
+      case 'MEDIUM':
+        this.dashChance = 0.05;
+        this.reactionDelay = 0.8;
+        break;
+      case 'HARD':
+        this.dashChance = 0.12;
+        this.reactionDelay = 0.95;
+        break;
+      case 'IMPOSSIBLE':
+        this.dashChance = 0.25;
+        this.reactionDelay = 1.0;
+        break;
+    }
+  }
+
+  updateBot(targetPlayer) {
+    const distance = Phaser.Math.Distance.Between(this.x, this.y, targetPlayer.x, targetPlayer.y);
+    const dirX = targetPlayer.x - this.x;
+    const dirY = targetPlayer.y - this.y;
+    const moveVec = new Phaser.Math.Vector2(dirX, dirY).normalize();
+
+    if (Math.random() < this.reactionDelay) {
+      if (this.isIt) {
+        if (!this.isDashing) {
+          this.body.setVelocity(moveVec.x * this.stats.speed, moveVec.y * this.stats.speed);
+        }
+        if (distance > 100 && Math.random() < this.dashChance) {
+          this.executeDash(moveVec);
+        }
+        if (distance <= this.stats.tagRadius && !this.isDashing && this.canTag) {
+          this.attemptTag(targetPlayer);
+        }
+      } else {
+        const evadeVec = moveVec.negate();
+        if (!this.isDashing) {
+          this.body.setVelocity(evadeVec.x * this.stats.speed, evadeVec.y * this.stats.speed);
+        }
+        if (distance < 160 && Math.random() < this.dashChance) {
+          this.executeDash(evadeVec);
+        }
+      }
+    }
+
+    this.updateUI();
+  }
+}
+
+// --- MENU, SHOP & LOBBY SCENE ---
 class MenuScene extends Phaser.Scene {
   constructor() {
     super('MenuScene');
@@ -255,81 +363,106 @@ class MenuScene extends Phaser.Scene {
 
   create() {
     this.selectedClass = 'RUNNER';
+    this.botLevel = 'MEDIUM';
+    this.isVSBot = false;
     this.isBinding = false;
 
-    this.add.text(400, 40, 'HIGH-SKILL TAG ONLINE', { fontSize: '30px', fontStyle: 'bold', fill: '#f8fafc' }).setOrigin(0.5);
+    this.add.text(400, 30, 'HIGH-SKILL TAG ONLINE', { fontSize: '28px', fontStyle: 'bold', fill: '#f8fafc' }).setOrigin(0.5);
 
-    // Account Banner UI
-    this.accountText = this.add.text(400, 75, `User: ${account.data.username} | Gold: $${account.data.gold} | Wins: ${account.data.wins}/${account.data.matches}`, { fontSize: '15px', fill: '#facc15' }).setOrigin(0.5);
+    this.accountText = this.add.text(400, 60, `User: ${account.data.username} | Gold: $${account.data.gold} | Wins: ${account.data.wins}/${account.data.matches}`, { fontSize: '14px', fill: '#facc15' }).setOrigin(0.5);
 
-    const switchUserBtn = this.add.text(400, 100, '[ Switch Account Profile ]', { fontSize: '13px', fill: '#38bdf8' }).setOrigin(0.5).setInteractive();
+    const switchUserBtn = this.add.text(400, 82, '[ Switch Profile ]', { fontSize: '12px', fill: '#38bdf8' }).setOrigin(0.5).setInteractive();
     switchUserBtn.on('pointerdown', () => {
-      const newUser = prompt('Enter Profile / Username:');
+      const newUser = prompt('Enter Profile Username:');
       if (newUser) {
         account.switchUser(newUser);
         this.scene.restart();
       }
     });
 
-    this.statusText = this.add.text(400, 135, 'Create or Join a Room', { fontSize: '15px', fill: '#94a3b8' }).setOrigin(0.5);
+    this.statusText = this.add.text(400, 110, 'Create Lobby, Join Lobby, or Play vs AI', { fontSize: '14px', fill: '#94a3b8' }).setOrigin(0.5);
 
     this.renderLobbyUI();
+    this.renderCosmeticsShop();
     this.renderKeybindUI();
   }
 
   renderLobbyUI() {
     // Create Room
-    const hostBtn = this.add.text(250, 175, 'CREATE LOBBY', { fontSize: '16px', fontStyle: 'bold', fill: '#ffffff', backgroundColor: '#2563eb', padding: { x: 12, y: 6 } }).setOrigin(0.5).setInteractive();
+    const hostBtn = this.add.text(200, 150, 'CREATE LOBBY', { fontSize: '14px', fontStyle: 'bold', fill: '#ffffff', backgroundColor: '#2563eb', padding: { x: 10, y: 5 } }).setOrigin(0.5).setInteractive();
     hostBtn.on('pointerdown', () => {
       this.statusText.setText('Creating lobby...');
       net.initHost(
-        (code) => {
-          this.statusText.setText(`ROOM CODE: ${code} (Waiting for player...)`);
-        },
+        (code) => this.statusText.setText(`ROOM CODE: ${code} (Waiting...)`),
         () => {
-          this.statusText.setText('Player connected! Starting match...');
-          this.time.delayedCall(1000, () => {
-            this.scene.start('GameScene', { p1Class: this.selectedClass });
-          });
+          this.statusText.setText('Player connected!');
+          this.time.delayedCall(1000, () => this.scene.start('GameScene', { p1Class: this.selectedClass, isVSBot: false }));
         },
-        (data) => {}
+        () => {}
       );
     });
 
     // Join Room
-    const joinBtn = this.add.text(550, 175, 'JOIN LOBBY', { fontSize: '16px', fontStyle: 'bold', fill: '#ffffff', backgroundColor: '#059669', padding: { x: 12, y: 6 } }).setOrigin(0.5).setInteractive();
+    const joinBtn = this.add.text(380, 150, 'JOIN LOBBY', { fontSize: '14px', fontStyle: 'bold', fill: '#ffffff', backgroundColor: '#059669', padding: { x: 10, y: 5 } }).setOrigin(0.5).setInteractive();
     joinBtn.on('pointerdown', () => {
-      const code = prompt('Enter 4-character Room Code:');
+      const code = prompt('Enter Room Code:');
       if (code) {
-        this.statusText.setText(`Connecting to ${code.toUpperCase()}...`);
-        net.initJoin(
-          code,
-          () => {
-            this.statusText.setText('Connected! Starting match...');
-            this.time.delayedCall(1000, () => {
-              this.scene.start('GameScene', { p1Class: this.selectedClass });
-            });
-          },
-          (err) => {
-            this.statusText.setText('Failed to connect. Check room code!');
-          },
-          (data) => {}
-        );
+        net.initJoin(code, () => this.scene.start('GameScene', { p1Class: this.selectedClass, isVSBot: false }), () => this.statusText.setText('Failed to connect!'));
       }
+    });
+
+    // Bot Mode Toggle
+    const botBtn = this.add.text(600, 150, `PLAY VS BOT [${this.botLevel}]`, { fontSize: '14px', fontStyle: 'bold', fill: '#ffffff', backgroundColor: '#d97706', padding: { x: 10, y: 5 } }).setOrigin(0.5).setInteractive();
+    botBtn.on('pointerdown', () => {
+      const levels = ['EASY', 'MEDIUM', 'HARD', 'IMPOSSIBLE'];
+      let idx = (levels.indexOf(this.botLevel) + 1) % levels.length;
+      this.botLevel = levels[idx];
+      botBtn.setText(`PLAY VS BOT [${this.botLevel}]`);
+    });
+
+    const startBotMatchBtn = this.add.text(600, 185, 'START BOT MATCH', { fontSize: '13px', fill: '#22c55e' }).setOrigin(0.5).setInteractive();
+    startBotMatchBtn.on('pointerdown', () => {
+      this.scene.start('GameScene', { p1Class: this.selectedClass, isVSBot: true, botLevel: this.botLevel });
+    });
+  }
+
+  renderCosmeticsShop() {
+    this.add.text(200, 230, 'FLEX COSMETICS SHOP', { fontSize: '16px', fontStyle: 'bold', fill: '#f43f5e' }).setOrigin(0.5);
+
+    let y = 265;
+    COSMETICS.TITLES.forEach(title => {
+      const isUnlocked = account.data.unlockedTitles.includes(title.id);
+      const isEquipped = account.data.equippedTitle === title.id;
+      let btnLabel = `${title.label} ${isEquipped ? '(EQUIPPED)' : isUnlocked ? '(EQUIP)' : `($${title.cost})`}`;
+
+      const btn = this.add.text(200, y, btnLabel, { fontSize: '12px', fill: isEquipped ? '#4ade80' : '#ffffff', backgroundColor: '#1e293b', padding: { x: 6, y: 3 } }).setOrigin(0.5).setInteractive();
+      btn.on('pointerdown', () => {
+        if (!isUnlocked && account.data.gold >= title.cost) {
+          account.data.gold -= title.cost;
+          account.data.unlockedTitles.push(title.id);
+          account.data.equippedTitle = title.id;
+          account.saveProfile();
+          this.scene.restart();
+        } else if (isUnlocked) {
+          account.data.equippedTitle = title.id;
+          account.saveProfile();
+          this.scene.restart();
+        }
+      });
+      y += 28;
     });
   }
 
   renderKeybindUI() {
-    this.add.text(400, 225, 'CUSTOM CONTROLS', { fontSize: '18px', fontStyle: 'bold', fill: '#38bdf8' }).setOrigin(0.5);
+    this.add.text(550, 230, 'CUSTOM CONTROLS', { fontSize: '16px', fontStyle: 'bold', fill: '#38bdf8' }).setOrigin(0.5);
 
-    this.keybindContainer = this.add.container(0, 0);
     const keys = Object.keys(userKeybinds);
-    let x = 180;
+    let x = 450;
     let y = 265;
 
     keys.forEach((keyName, index) => {
-      const labelText = this.add.text(x, y, `${keyName}:`, { fontSize: '13px', fill: '#cbd5e1' }).setOrigin(1, 0.5);
-      const btnText = this.add.text(x + 10, y, `[ ${userKeybinds[keyName]} ]`, { fontSize: '13px', fill: '#facc15', backgroundColor: '#1e293b', padding: { x: 4, y: 2 } }).setOrigin(0, 0.5).setInteractive();
+      const labelText = this.add.text(x, y, `${keyName}:`, { fontSize: '12px', fill: '#cbd5e1' }).setOrigin(1, 0.5);
+      const btnText = this.add.text(x + 10, y, `[ ${userKeybinds[keyName]} ]`, { fontSize: '12px', fill: '#facc15', backgroundColor: '#1e293b', padding: { x: 4, y: 2 } }).setOrigin(0, 0.5).setInteractive();
 
       btnText.on('pointerdown', () => {
         if (this.isBinding) return;
@@ -348,16 +481,14 @@ class MenuScene extends Phaser.Scene {
         window.addEventListener('keydown', keyListener);
       });
 
-      this.keybindContainer.add([labelText, btnText]);
-
-      y += 30;
+      y += 26;
       if ((index + 1) % 5 === 0) {
-        x += 280;
+        x += 200;
         y = 265;
       }
     });
 
-    const resetBtn = this.add.text(400, 460, 'Reset Controls to Default', { fontSize: '13px', fill: '#ef4444' }).setOrigin(0.5).setInteractive();
+    const resetBtn = this.add.text(550, 460, 'Reset Controls to Default', { fontSize: '12px', fill: '#ef4444' }).setOrigin(0.5).setInteractive();
     resetBtn.on('pointerdown', () => {
       userKeybinds = { ...DEFAULT_KEYBINDS };
       saveKeybinds(userKeybinds);
@@ -374,6 +505,8 @@ class GameScene extends Phaser.Scene {
 
   init(data) {
     this.p1ClassKey = data.p1Class || 'RUNNER';
+    this.isVSBot = data.isVSBot || false;
+    this.botLevel = data.botLevel || 'MEDIUM';
     this.matchTimer = 30;
   }
 
@@ -392,24 +525,26 @@ class GameScene extends Phaser.Scene {
       tag: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.tag] || userKeybinds.tag)
     };
 
-    const isHost = net.isHost;
+    const isHost = this.isVSBot ? true : net.isHost;
     this.localPlayer = new Player(this, isHost ? 200 : 600, 300, CHARACTERS[this.p1ClassKey], isHost);
-    this.remotePlayer = new Player(this, isHost ? 600 : 200, 300, CHARACTERS.RUNNER, !isHost);
+
+    if (this.isVSBot) {
+      this.remotePlayer = new BotPlayer(this, 600, 300, CHARACTERS.RUNNER, false, this.botLevel);
+    } else {
+      this.remotePlayer = new Player(this, isHost ? 600 : 200, 300, CHARACTERS.RUNNER, !isHost);
+      net.conn.on('data', (data) => this.handleNetworkData(data));
+    }
 
     this.timerText = this.add.text(400, 30, `Time: ${this.matchTimer}`, { fontSize: '24px', fontStyle: 'bold', fill: '#ffffff' }).setOrigin(0.5);
 
-    net.conn.on('data', (data) => this.handleNetworkData(data));
-
-    if (net.isHost) {
+    if (isHost) {
       this.time.addEvent({
         delay: 1000,
         callback: () => {
           this.matchTimer--;
           this.timerText.setText(`Time: ${this.matchTimer}`);
-          net.send({ type: 'TIMER', value: this.matchTimer });
-          if (this.matchTimer <= 0) {
-            this.endMatch();
-          }
+          if (!this.isVSBot) net.send({ type: 'TIMER', value: this.matchTimer });
+          if (this.matchTimer <= 0) this.endMatch();
         },
         loop: true
       });
@@ -446,22 +581,26 @@ class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keys.tag)) {
       if (this.localPlayer.attemptTag(this.remotePlayer)) {
         this.cameras.main.shake(100, 0.01);
-        net.send({ type: 'TAG_SUCCESS' });
+        if (!this.isVSBot) net.send({ type: 'TAG_SUCCESS' });
       }
     }
 
     this.localPlayer.updateUI();
-    this.remotePlayer.updateUI();
 
-    net.send({
-      type: 'SYNC',
-      x: this.localPlayer.x,
-      y: this.localPlayer.y,
-      vx: this.localPlayer.body.velocity.x,
-      vy: this.localPlayer.body.velocity.y,
-      isDashing: this.localPlayer.isDashing,
-      isIt: this.localPlayer.isIt
-    });
+    if (this.isVSBot) {
+      this.remotePlayer.updateBot(this.localPlayer);
+    } else {
+      this.remotePlayer.updateUI();
+      net.send({
+        type: 'SYNC',
+        x: this.localPlayer.x,
+        y: this.localPlayer.y,
+        vx: this.localPlayer.body.velocity.x,
+        vy: this.localPlayer.body.velocity.y,
+        isDashing: this.localPlayer.isDashing,
+        isIt: this.localPlayer.isIt
+      });
+    }
   }
 
   handleNetworkData(data) {
@@ -478,9 +617,7 @@ class GameScene extends Phaser.Scene {
     } else if (data.type === 'TIMER') {
       this.matchTimer = data.value;
       this.timerText.setText(`Time: ${this.matchTimer}`);
-      if (this.matchTimer <= 0) {
-        this.endMatch();
-      }
+      if (this.matchTimer <= 0) this.endMatch();
     }
   }
 
@@ -488,7 +625,6 @@ class GameScene extends Phaser.Scene {
     const localWon = !this.localPlayer.isIt;
     const reward = localWon ? 100 : 25;
     
-    // Save account stats update
     account.addStats(localWon, reward);
 
     this.add.text(400, 250, localWon ? 'YOU WIN!' : 'YOU LOST!', { fontSize: '40px', fontStyle: 'bold', fill: localWon ? '#22c55e' : '#ef4444' }).setOrigin(0.5);
