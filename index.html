@@ -3,78 +3,81 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>2D High-Skill Tag Online</title>
+  <title>2D Cyber Tag Arena</title>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body {
-      margin: 0;
-      padding: 0;
-      background-color: #0f172a;
+      background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
       color: #f8fafc;
-      font-family: Arial, sans-serif;
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
       overflow: hidden;
     }
     #game-container {
-      border: 4px solid #334155;
-      border-radius: 8px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      position: relative;
+      border: 2px solid rgba(56, 189, 248, 0.3);
+      border-radius: 16px;
+      box-shadow: 0 0 50px rgba(14, 165, 233, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.8);
+      overflow: hidden;
     }
-    .instructions {
-      margin-top: 10px;
-      font-size: 14px;
-      color: #94a3b8;
-      text-align: center;
+    .hud-subtext {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #64748b;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-weight: 600;
     }
   </style>
 </head>
 <body>
 
 <div id="game-container"></div>
-<div class="instructions">
-  Online 1v1 Skill Tag • Flex Cosmetics, Practice VS AI Bots & Custom Keybinds!
-</div>
+<div class="hud-subtext">Cyber Tag • WASD / Arrows to Move • Space / Shift to Dash • Contact to Tag</div>
 
 <script>
 // --- COSMETICS CATALOG ---
 const COSMETICS = {
   TITLES: [
-    { id: 'NONE', label: 'No Title', cost: 0, unlocked: true },
-    { id: 'ROOKIE', label: '[ROOKIE]', cost: 200, unlocked: false },
-    { id: 'PRO', label: '[PRO]', cost: 500, unlocked: false },
-    { id: 'TAG_GOD', label: '[TAG GOD]', cost: 1500, unlocked: false },
-    { id: 'UNTOUCHABLE', label: '[UNTOUCHABLE]', cost: 3000, unlocked: false }
+    { id: 'NONE', label: 'NO TITLE', cost: 0 },
+    { id: 'ROOKIE', label: '⚡ ROOKIE', cost: 150 },
+    { id: 'SHADOW', label: '🥷 SHADOW STEPPER', cost: 400 },
+    { id: 'TAG_GOD', label: '👑 TAG OVERLORD', cost: 1000 },
+    { id: 'UNTOUCHABLE', label: '👻 UNTOUCHABLE', cost: 2500 }
   ],
   TRAILS: [
-    { id: 'DEFAULT', label: 'White Trail', color: 0xffffff, cost: 0, unlocked: true },
-    { id: 'NEON_GREEN', label: 'Neon Green Trail', color: 0x10b981, cost: 400, unlocked: false },
-    { id: 'FLAME', label: 'Flame Orange Trail', color: 0xf97316, cost: 800, unlocked: false },
-    { id: 'CYBER', label: 'Cyber Pink Trail', color: 0xec4899, cost: 1200, unlocked: false }
+    { id: 'DEFAULT', label: 'Cyan Pulse', color: 0x06b6d4, cost: 0 },
+    { id: 'NEON_GREEN', label: 'Toxic Lime', color: 0x10b981, cost: 300 },
+    { id: 'FLAME', label: 'Solar Flare', color: 0xf97316, cost: 600 },
+    { id: 'VOID', label: 'Void Purple', color: 0xa855f7, cost: 1200 }
   ]
 };
 
 // --- ACCOUNT & PROFILE MANAGER ---
 class AccountManager {
   constructor() {
-    this.activeUser = localStorage.getItem('tag_active_user') || 'Player1';
+    this.activeUser = localStorage.getItem('tag_cyber_active_user') || 'CyberRunner';
     this.loadProfile();
   }
 
   loadProfile() {
-    const raw = localStorage.getItem(`tag_account_${this.activeUser}`);
+    const raw = localStorage.getItem(`tag_cyber_account_${this.activeUser}`);
     if (raw) {
       this.data = JSON.parse(raw);
     } else {
       this.data = {
         username: this.activeUser,
-        gold: 100,
+        coins: 200,
+        xp: 0,
+        level: 1,
         wins: 0,
-        losses: 0,
         matches: 0,
         equippedTitle: 'NONE',
         equippedTrail: 'DEFAULT',
@@ -86,8 +89,8 @@ class AccountManager {
   }
 
   saveProfile() {
-    localStorage.setItem(`tag_account_${this.activeUser}`, JSON.stringify(this.data));
-    localStorage.setItem('tag_active_user', this.activeUser);
+    localStorage.setItem(`tag_cyber_account_${this.activeUser}`, JSON.stringify(this.data));
+    localStorage.setItem('tag_cyber_active_user', this.activeUser);
   }
 
   switchUser(newUsername) {
@@ -96,46 +99,49 @@ class AccountManager {
     this.loadProfile();
   }
 
-  addStats(won, goldEarned) {
-    this.data.gold += goldEarned;
+  addRewards(won, coinsEarned, xpEarned) {
+    this.data.coins += coinsEarned;
+    this.data.xp += xpEarned;
     this.data.matches += 1;
     if (won) this.data.wins += 1;
-    else this.data.losses += 1;
+
+    const nextLevelXp = this.data.level * 200;
+    if (this.data.xp >= nextLevelXp) {
+      this.data.level += 1;
+    }
+
     this.saveProfile();
   }
 }
 
 const account = new AccountManager();
 
-// --- KEYBIND MANAGEMENT SYSTEM ---
+// --- KEYBINDS SYSTEM ---
 const DEFAULT_KEYBINDS = {
-  up: 'W',
-  left: 'A',
-  down: 'S',
-  right: 'D',
-  dashUp: 'ArrowUp',
-  dashLeft: 'ArrowLeft',
-  dashDown: 'ArrowDown',
-  dashRight: 'ArrowRight',
-  tag: 'ShiftRight'
+  up: 'KeyW',
+  left: 'KeyA',
+  down: 'KeyS',
+  right: 'KeyD',
+  dash: 'Space',
+  tag: 'ShiftLeft'
 };
 
 function getSavedKeybinds() {
-  const saved = localStorage.getItem('tag_game_keybinds');
+  const saved = localStorage.getItem('tag_cyber_keybinds');
   return saved ? JSON.parse(saved) : { ...DEFAULT_KEYBINDS };
 }
 
 function saveKeybinds(binds) {
-  localStorage.setItem('tag_game_keybinds', JSON.stringify(binds));
+  localStorage.setItem('tag_cyber_keybinds', JSON.stringify(binds));
 }
 
 let userKeybinds = getSavedKeybinds();
 
-// --- CHARACTER ARCHETYPES ---
+// --- CHARACTER CLASSES ---
 const CHARACTERS = {
-  RUNNER: { name: 'Runner', speed: 240, dashDistance: 160, tagRadius: 45, color: 0x3b82f6 },
-  LONG_STRIDER: { name: 'Long Strider', speed: 200, dashDistance: 260, tagRadius: 45, color: 0x10b981 },
-  REACH_MASTER: { name: 'Reach Master', speed: 170, dashDistance: 140, tagRadius: 80, color: 0xf59e0b }
+  STRIKER: { name: 'Striker', speed: 230, dashForce: 650, tagRadius: 45, color: 0x38bdf8 },
+  PHANTOM: { name: 'Phantom', speed: 260, dashForce: 800, tagRadius: 40, color: 0xa855f7 },
+  TITAN: { name: 'Titan', speed: 190, dashForce: 500, tagRadius: 70, color: 0xf59e0b }
 };
 
 // --- PEERJS NETWORK MANAGER ---
@@ -149,8 +155,8 @@ class NetworkManager {
 
   initHost(onOpen, onClientConnect, onData) {
     this.isHost = true;
-    this.roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-    this.peer = new Peer(`tag-game-${this.roomCode}`);
+    this.roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    this.peer = new Peer(`cyber-tag-${this.roomCode}`);
 
     this.peer.on('open', () => onOpen(this.roomCode));
     this.peer.on('connection', (conn) => {
@@ -166,7 +172,7 @@ class NetworkManager {
     this.peer = new Peer();
 
     this.peer.on('open', () => {
-      this.conn = this.peer.connect(`tag-game-${this.roomCode}`);
+      this.conn = this.peer.connect(`cyber-tag-${this.roomCode}`);
       this.setupConnection(onData);
       this.conn.on('open', () => onSuccess());
     });
@@ -187,312 +193,429 @@ class NetworkManager {
 
 const net = new NetworkManager();
 
-// --- PLAYER ENTITY CLASS ---
+// --- PLAYER CLASS ---
 class Player extends Phaser.GameObjects.Container {
-  constructor(scene, x, y, characterConfig, isIt = false, profileData = null) {
+  constructor(scene, x, y, classKey, isIt = false, profileData = null) {
     super(scene, x, y);
     this.scene = scene;
     this.isIt = isIt;
     this.profile = profileData || account.data;
-
-    this.stats = { ...characterConfig };
-    this.tagCooldownDuration = 1000;
-    this.dashDuration = 120;
+    this.stats = { ...CHARACTERS[classKey] };
 
     this.isDashing = false;
+    this.canDash = true;
     this.canTag = true;
 
-    // Visual Range Indicator
+    // Tag Range Aura
     this.rangeCircle = scene.add.graphics();
     this.add(this.rangeCircle);
 
-    // Player Body
-    this.bodySprite = scene.add.circle(0, 0, 16, this.stats.color);
-    this.add(this.bodySprite);
+    // Player Avatar Circle
+    this.bodyCircle = scene.add.circle(0, 0, 16, this.isIt ? 0xef4444 : this.stats.color);
+    this.add(this.bodyCircle);
 
-    // Flex Title & Username Badge
+    // Inner Glow Core
+    this.coreCircle = scene.add.circle(0, 0, 6, 0xffffff, 0.9);
+    this.add(this.coreCircle);
+
+    // Username & Cosmetic Title
     const titleObj = COSMETICS.TITLES.find(t => t.id === this.profile.equippedTitle);
-    const titleText = (titleObj && titleObj.id !== 'NONE') ? `${titleObj.label} ` : '';
-    
-    this.nameBadge = scene.add.text(0, -32, `${titleText}${this.profile.username}`, {
-      fontSize: '12px',
-      fontStyle: 'bold',
-      fill: '#f1f5f9'
-    }).setOrigin(0.5);
-    this.add(this.nameBadge);
+    const titleText = (titleObj && titleObj.id !== 'NONE') ? `${titleObj.label}\n` : '';
 
-    this.roleIndicator = scene.add.text(0, -18, isIt ? 'IT!' : '', {
-      fontSize: '13px',
+    this.nameTag = scene.add.text(0, -38, `${titleText}${this.profile.username}`, {
+      fontFamily: 'Orbitron',
+      fontSize: '10px',
       fontStyle: 'bold',
-      fill: '#ef4444'
+      fill: '#f8fafc',
+      align: 'center'
     }).setOrigin(0.5);
-    this.add(this.roleIndicator);
+    this.add(this.nameTag);
 
+    // Status Badge
+    this.roleBadge = scene.add.text(0, -22, isIt ? 'IT' : 'RUNNER', {
+      fontFamily: 'Orbitron',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      fill: isIt ? '#ef4444' : '#38bdf8'
+    }).setOrigin(0.5);
+    this.add(this.roleBadge);
+
+    // Physics Initialization
     scene.physics.world.enable(this);
     this.body.setCollideWorldBounds(true);
     this.body.setCircle(16, -16, -16);
     scene.add.existing(this);
   }
 
-  executeDash(directionVector) {
+  dash(vector) {
+    if (!this.canDash || this.isDashing) return;
+
     this.isDashing = true;
-    const dashSpeed = this.stats.dashDistance * 5;
+    this.canDash = false;
 
-    this.body.setVelocity(directionVector.x * dashSpeed, directionVector.y * dashSpeed);
+    this.body.setVelocity(vector.x * this.stats.dashForce, vector.y * this.stats.dashForce);
 
-    // Dash Trail Visual Effect
     const trailObj = COSMETICS.TRAILS.find(t => t.id === this.profile.equippedTrail) || COSMETICS.TRAILS[0];
-    const ghost = this.scene.add.circle(this.x, this.y, 14, trailObj.color, 0.6);
-    this.scene.tweens.add({
-      targets: ghost,
-      alpha: 0,
-      scale: 1.5,
-      duration: 250,
-      onComplete: () => ghost.destroy()
+    const ghostTimer = this.scene.time.addEvent({
+      delay: 30,
+      repeat: 5,
+      callback: () => {
+        const ghost = this.scene.add.circle(this.x, this.y, 14, trailObj.color, 0.7);
+        this.scene.tweens.add({
+          targets: ghost,
+          alpha: 0,
+          scale: 0.2,
+          duration: 300,
+          onComplete: () => ghost.destroy()
+        });
+      }
     });
 
-    this.scene.time.delayedCall(this.dashDuration, () => {
+    this.scene.time.delayedCall(180, () => {
       this.isDashing = false;
+    });
+
+    this.scene.time.delayedCall(1200, () => {
+      this.canDash = true;
     });
   }
 
-  attemptTag(targetPlayer) {
-    if (!this.canTag || this.isDashing || !this.isIt) return false;
+  attemptTag(target) {
+    if (!this.isIt || !this.canTag) return false;
 
-    this.canTag = false;
-    this.scene.time.delayedCall(this.tagCooldownDuration, () => {
-      this.canTag = true;
-    });
-
-    const distance = Phaser.Math.Distance.Between(this.x, this.y, targetPlayer.x, targetPlayer.y);
-    if (distance <= this.stats.tagRadius) {
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (dist <= this.stats.tagRadius) {
+      this.canTag = false;
       this.setItState(false);
-      targetPlayer.setItState(true);
+      target.setItState(true);
+
+      this.scene.time.delayedCall(1000, () => { this.canTag = true; });
       return true;
     }
-
     return false;
   }
 
   setItState(isIt) {
     this.isIt = isIt;
-    this.roleIndicator.setText(isIt ? 'IT!' : '');
+    this.bodyCircle.setFillStyle(isIt ? 0xef4444 : this.stats.color);
+    this.roleBadge.setText(isIt ? 'IT' : 'RUNNER');
+    this.roleBadge.setFill(isIt ? '#ef4444' : '#38bdf8');
   }
 
-  updateUI() {
+  renderAura() {
     this.rangeCircle.clear();
-
-    if (this.isDashing) {
-      this.rangeCircle.lineStyle(2, 0xeab308, 0.9);
-    } else if (!this.canTag) {
-      this.rangeCircle.lineStyle(2, 0xef4444, 0.4);
-    } else {
-      this.rangeCircle.lineStyle(2, 0xffffff, 0.6);
+    if (this.isIt) {
+      this.rangeCircle.lineStyle(2, 0xef4444, 0.8);
+      this.rangeCircle.strokeCircle(0, 0, this.stats.tagRadius);
     }
-
-    this.rangeCircle.strokeCircle(0, 0, this.stats.tagRadius);
   }
 }
 
-// --- BOT AI CONTROLLER (MULTIPLE DIFFICULTIES) ---
-class BotPlayer extends Player {
-  constructor(scene, x, y, characterConfig, isIt = false, level = 'MEDIUM') {
-    super(scene, x, y, characterConfig, isIt, { username: `Bot [${level}]`, equippedTitle: 'NONE', equippedTrail: 'DEFAULT' });
+// --- SMART BOT AI CONTROLLER ---
+class SmartBot extends Player {
+  constructor(scene, x, y, classKey, isIt = false, level = 'MEDIUM', obstacles) {
+    super(scene, x, y, classKey, isIt, { username: `Bot [${level}]`, equippedTitle: 'NONE', equippedTrail: 'DEFAULT' });
     this.level = level;
-    this.setDifficultyStats();
+    this.obstacles = obstacles;
+
+    this.lastX = x;
+    this.lastY = y;
+    this.stuckCounter = 0;
+
+    this.setAIStats();
   }
 
-  setDifficultyStats() {
+  setAIStats() {
     switch (this.level) {
       case 'EASY':
-        this.dashChance = 0.01;
-        this.reactionDelay = 0.4;
+        this.reactionDelay = 0.6;
+        this.dashAggression = 0.02;
         break;
       case 'MEDIUM':
-        this.dashChance = 0.05;
-        this.reactionDelay = 0.8;
+        this.reactionDelay = 0.85;
+        this.dashAggression = 0.08;
         break;
       case 'HARD':
-        this.dashChance = 0.12;
-        this.reactionDelay = 0.95;
+        this.reactionDelay = 0.98;
+        this.dashAggression = 0.18;
         break;
       case 'IMPOSSIBLE':
-        this.dashChance = 0.25;
         this.reactionDelay = 1.0;
+        this.dashAggression = 0.35;
         break;
     }
   }
 
-  updateBot(targetPlayer) {
-    const distance = Phaser.Math.Distance.Between(this.x, this.y, targetPlayer.x, targetPlayer.y);
-    const dirX = targetPlayer.x - this.x;
-    const dirY = targetPlayer.y - this.y;
-    const moveVec = new Phaser.Math.Vector2(dirX, dirY).normalize();
+  updateAI(targetPlayer) {
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, targetPlayer.x, targetPlayer.y);
 
-    if (Math.random() < this.reactionDelay) {
-      if (this.isIt) {
-        if (!this.isDashing) {
-          this.body.setVelocity(moveVec.x * this.stats.speed, moveVec.y * this.stats.speed);
-        }
-        if (distance > 100 && Math.random() < this.dashChance) {
-          this.executeDash(moveVec);
-        }
-        if (distance <= this.stats.tagRadius && !this.isDashing && this.canTag) {
-          this.attemptTag(targetPlayer);
-        }
-      } else {
-        const evadeVec = moveVec.negate();
-        if (!this.isDashing) {
-          this.body.setVelocity(evadeVec.x * this.stats.speed, evadeVec.y * this.stats.speed);
-        }
-        if (distance < 160 && Math.random() < this.dashChance) {
-          this.executeDash(evadeVec);
-        }
+    // Un-stuck corner detector
+    if (Math.abs(this.x - this.lastX) < 1 && Math.abs(this.y - this.lastY) < 1) {
+      this.stuckCounter++;
+    } else {
+      this.stuckCounter = 0;
+    }
+
+    this.lastX = this.x;
+    this.lastY = this.y;
+
+    let moveDir;
+
+    if (this.stuckCounter > 15) {
+      // Force escape vector when stuck in corners
+      const escapeX = this.x < 400 ? 1 : -1;
+      const escapeY = this.y < 300 ? 1 : -1;
+      moveDir = new Phaser.Math.Vector2(escapeX, escapeY).normalize();
+      if (this.canDash) this.dash(moveDir);
+    } else {
+      let targetX = targetPlayer.x;
+      let targetY = targetPlayer.y;
+
+      if (!this.isIt) {
+        targetX = this.x - (targetPlayer.x - this.x);
+        targetY = this.y - (targetPlayer.y - this.y);
+      }
+
+      let desireDir = new Phaser.Math.Vector2(targetX - this.x, targetY - this.y).normalize();
+      moveDir = this.calculateObstacleAvoidance(desireDir);
+    }
+
+    if (!this.isDashing) {
+      this.body.setVelocity(moveDir.x * this.stats.speed, moveDir.y * this.stats.speed);
+    }
+
+    // Smart Dash
+    if (this.canDash && Math.random() < this.dashAggression) {
+      if (this.isIt && dist < 240 && dist > 50) {
+        this.dash(moveDir);
+      } else if (!this.isIt && dist < 150) {
+        this.dash(moveDir);
       }
     }
 
-    this.updateUI();
+    this.renderAura();
+  }
+
+  calculateObstacleAvoidance(desiredVector) {
+    const rayAngles = [0, 45, -45, 90, -90, 135, -135, 180];
+    let bestVector = desiredVector.clone();
+    let maxScore = -999;
+
+    rayAngles.forEach(angleDeg => {
+      const rad = Phaser.Math.DegToRad(angleDeg);
+      const testVec = desiredVector.clone().rotate(rad);
+      const rayEnd = new Phaser.Math.Vector2(this.x + testVec.x * 50, this.y + testVec.y * 50);
+
+      let blocked = false;
+      this.obstacles.getChildren().forEach(wall => {
+        const bounds = wall.getBounds();
+        if (Phaser.Geom.Intersects.LineToRectangle(new Phaser.Geom.Line(this.x, this.y, rayEnd.x, rayEnd.y), bounds)) {
+          blocked = true;
+        }
+      });
+
+      if (!blocked) {
+        const alignmentScore = testVec.dot(desiredVector);
+        if (alignmentScore > maxScore) {
+          maxScore = alignmentScore;
+          bestVector = testVec;
+        }
+      }
+    });
+
+    return bestVector;
   }
 }
 
-// --- MENU, SHOP & LOBBY SCENE ---
+// --- MAIN MENU & SHOP SCENE ---
 class MenuScene extends Phaser.Scene {
   constructor() {
     super('MenuScene');
   }
 
   create() {
-    this.selectedClass = 'RUNNER';
+    this.selectedClass = 'STRIKER';
     this.botLevel = 'MEDIUM';
-    this.isVSBot = false;
-    this.isBinding = false;
 
-    this.add.text(400, 30, 'HIGH-SKILL TAG ONLINE', { fontSize: '28px', fontStyle: 'bold', fill: '#f8fafc' }).setOrigin(0.5);
+    this.add.rectangle(400, 300, 800, 600, 0x020617);
+    this.add.grid(400, 300, 800, 600, 40, 40, 0x0f172a, 0.4, 0x1e293b, 0.6);
 
-    this.accountText = this.add.text(400, 60, `User: ${account.data.username} | Gold: $${account.data.gold} | Wins: ${account.data.wins}/${account.data.matches}`, { fontSize: '14px', fill: '#facc15' }).setOrigin(0.5);
+    this.add.text(400, 45, 'CYBER TAG ONLINE', {
+      fontFamily: 'Orbitron',
+      fontSize: '32px',
+      fontStyle: '900',
+      fill: '#38bdf8'
+    }).setOrigin(0.5);
 
-    const switchUserBtn = this.add.text(400, 82, '[ Switch Profile ]', { fontSize: '12px', fill: '#38bdf8' }).setOrigin(0.5).setInteractive();
-    switchUserBtn.on('pointerdown', () => {
-      const newUser = prompt('Enter Profile Username:');
-      if (newUser) {
-        account.switchUser(newUser);
+    this.renderProfileCard();
+    this.renderLobbyPanel();
+    this.renderClassSelector();
+    this.renderShopPanel();
+    this.renderKeybindsPanel();
+  }
+
+  renderProfileCard() {
+    const card = this.add.graphics();
+    card.fillStyle(0x0f172a, 0.8);
+    card.lineStyle(1, 0x334155, 0.8);
+    card.fillRoundedRect(30, 95, 740, 50, 12);
+    card.strokeRoundedRect(30, 95, 740, 50, 12);
+
+    const titleObj = COSMETICS.TITLES.find(t => t.id === account.data.equippedTitle);
+    const titleStr = (titleObj && titleObj.id !== 'NONE') ? ` | Title: ${titleObj.label}` : '';
+
+    this.profileText = this.add.text(50, 110, `USER: ${account.data.username}   LVL ${account.data.level}   COINS: 🪙${account.data.coins}${titleStr}`, {
+      fontFamily: 'Orbitron',
+      fontSize: '12px',
+      fill: '#facc15'
+    });
+
+    const switchBtn = this.add.text(750, 120, '[ SWITCH ]', {
+      fontFamily: 'Orbitron',
+      fontSize: '11px',
+      fill: '#38bdf8'
+    }).setOrigin(1, 0.5).setInteractive();
+
+    switchBtn.on('pointerdown', () => {
+      const name = prompt('Enter new Username:');
+      if (name) {
+        account.switchUser(name);
         this.scene.restart();
       }
     });
-
-    this.statusText = this.add.text(400, 110, 'Create Lobby, Join Lobby, or Play vs AI', { fontSize: '14px', fill: '#94a3b8' }).setOrigin(0.5);
-
-    this.renderLobbyUI();
-    this.renderCosmeticsShop();
-    this.renderKeybindUI();
   }
 
-  renderLobbyUI() {
-    // Create Room
-    const hostBtn = this.add.text(200, 150, 'CREATE LOBBY', { fontSize: '14px', fontStyle: 'bold', fill: '#ffffff', backgroundColor: '#2563eb', padding: { x: 10, y: 5 } }).setOrigin(0.5).setInteractive();
+  renderLobbyPanel() {
+    const hostBtn = this.add.text(120, 180, 'HOST LOBBY', {
+      fontFamily: 'Orbitron',
+      fontSize: '13px',
+      fill: '#ffffff',
+      backgroundColor: '#2563eb',
+      padding: { x: 16, y: 10 }
+    }).setOrigin(0.5).setInteractive();
+
     hostBtn.on('pointerdown', () => {
-      this.statusText.setText('Creating lobby...');
       net.initHost(
-        (code) => this.statusText.setText(`ROOM CODE: ${code} (Waiting...)`),
-        () => {
-          this.statusText.setText('Player connected!');
-          this.time.delayedCall(1000, () => this.scene.start('GameScene', { p1Class: this.selectedClass, isVSBot: false }));
-        },
+        (code) => alert(`Lobby Created! Share Room Code: ${code}`),
+        () => this.scene.start('GameScene', { p1Class: this.selectedClass, isVSBot: false }),
         () => {}
       );
     });
 
-    // Join Room
-    const joinBtn = this.add.text(380, 150, 'JOIN LOBBY', { fontSize: '14px', fontStyle: 'bold', fill: '#ffffff', backgroundColor: '#059669', padding: { x: 10, y: 5 } }).setOrigin(0.5).setInteractive();
+    const joinBtn = this.add.text(280, 180, 'JOIN LOBBY', {
+      fontFamily: 'Orbitron',
+      fontSize: '13px',
+      fill: '#ffffff',
+      backgroundColor: '#059669',
+      padding: { x: 16, y: 10 }
+    }).setOrigin(0.5).setInteractive();
+
     joinBtn.on('pointerdown', () => {
-      const code = prompt('Enter Room Code:');
+      const code = prompt('Enter 6-Character Room Code:');
       if (code) {
-        net.initJoin(code, () => this.scene.start('GameScene', { p1Class: this.selectedClass, isVSBot: false }), () => this.statusText.setText('Failed to connect!'));
+        net.initJoin(code, () => this.scene.start('GameScene', { p1Class: this.selectedClass, isVSBot: false }), () => alert('Room not found!'));
       }
     });
 
-    // Bot Mode Toggle
-    const botBtn = this.add.text(600, 150, `PLAY VS BOT [${this.botLevel}]`, { fontSize: '14px', fontStyle: 'bold', fill: '#ffffff', backgroundColor: '#d97706', padding: { x: 10, y: 5 } }).setOrigin(0.5).setInteractive();
+    const botBtn = this.add.text(520, 180, `VS BOT: ${this.botLevel}`, {
+      fontFamily: 'Orbitron',
+      fontSize: '13px',
+      fill: '#ffffff',
+      backgroundColor: '#d97706',
+      padding: { x: 16, y: 10 }
+    }).setOrigin(0.5).setInteractive();
+
     botBtn.on('pointerdown', () => {
       const levels = ['EASY', 'MEDIUM', 'HARD', 'IMPOSSIBLE'];
       let idx = (levels.indexOf(this.botLevel) + 1) % levels.length;
       this.botLevel = levels[idx];
-      botBtn.setText(`PLAY VS BOT [${this.botLevel}]`);
+      botBtn.setText(`VS BOT: ${this.botLevel}`);
     });
 
-    const startBotMatchBtn = this.add.text(600, 185, 'START BOT MATCH', { fontSize: '13px', fill: '#22c55e' }).setOrigin(0.5).setInteractive();
-    startBotMatchBtn.on('pointerdown', () => {
+    const startBotBtn = this.add.text(680, 180, 'PLAY VS AI', {
+      fontFamily: 'Orbitron',
+      fontSize: '13px',
+      fill: '#ffffff',
+      backgroundColor: '#7c3aed',
+      padding: { x: 16, y: 10 }
+    }).setOrigin(0.5).setInteractive();
+
+    startBotBtn.on('pointerdown', () => {
       this.scene.start('GameScene', { p1Class: this.selectedClass, isVSBot: true, botLevel: this.botLevel });
     });
   }
 
-  renderCosmeticsShop() {
-    this.add.text(200, 230, 'FLEX COSMETICS SHOP', { fontSize: '16px', fontStyle: 'bold', fill: '#f43f5e' }).setOrigin(0.5);
+  renderClassSelector() {
+    this.add.text(50, 230, 'SELECT ARCHETYPE', { fontFamily: 'Orbitron', fontSize: '13px', fill: '#94a3b8' });
 
-    let y = 265;
-    COSMETICS.TITLES.forEach(title => {
-      const isUnlocked = account.data.unlockedTitles.includes(title.id);
-      const isEquipped = account.data.equippedTitle === title.id;
-      let btnLabel = `${title.label} ${isEquipped ? '(EQUIPPED)' : isUnlocked ? '(EQUIP)' : `($${title.cost})`}`;
+    let x = 80;
+    Object.keys(CHARACTERS).forEach(key => {
+      const cls = CHARACTERS[key];
+      const isSelected = this.selectedClass === key;
 
-      const btn = this.add.text(200, y, btnLabel, { fontSize: '12px', fill: isEquipped ? '#4ade80' : '#ffffff', backgroundColor: '#1e293b', padding: { x: 6, y: 3 } }).setOrigin(0.5).setInteractive();
+      const card = this.add.text(x, 260, `${cls.name}\nSpd: ${cls.speed}\nReach: ${cls.tagRadius}`, {
+        fontFamily: 'Inter',
+        fontSize: '11px',
+        fill: isSelected ? '#38bdf8' : '#64748b',
+        backgroundColor: isSelected ? '#1e293b' : '#0f172a',
+        padding: { x: 12, y: 8 },
+        align: 'center'
+      }).setInteractive();
+
+      card.on('pointerdown', () => {
+        this.selectedClass = key;
+        this.scene.restart();
+      });
+
+      x += 110;
+    });
+  }
+
+  renderShopPanel() {
+    this.add.text(400, 230, 'COSMETIC VAULT', { fontFamily: 'Orbitron', fontSize: '13px', fill: '#f43f5e' });
+
+    let y = 260;
+    COSMETICS.TITLES.slice(0, 4).forEach(item => {
+      const unlocked = account.data.unlockedTitles.includes(item.id);
+      const equipped = account.data.equippedTitle === item.id;
+      const label = `${item.label} ${equipped ? '✓' : unlocked ? '[EQUIP]' : `(🪙${item.cost})`}`;
+
+      const btn = this.add.text(400, y, label, {
+        fontFamily: 'Inter',
+        fontSize: '11px',
+        fill: equipped ? '#4ade80' : unlocked ? '#38bdf8' : '#94a3b8'
+      }).setInteractive();
+
       btn.on('pointerdown', () => {
-        if (!isUnlocked && account.data.gold >= title.cost) {
-          account.data.gold -= title.cost;
-          account.data.unlockedTitles.push(title.id);
-          account.data.equippedTitle = title.id;
+        if (!unlocked && account.data.coins >= item.cost) {
+          account.data.coins -= item.cost;
+          account.data.unlockedTitles.push(item.id);
+          account.data.equippedTitle = item.id;
           account.saveProfile();
           this.scene.restart();
-        } else if (isUnlocked) {
-          account.data.equippedTitle = title.id;
+        } else if (unlocked) {
+          account.data.equippedTitle = item.id;
           account.saveProfile();
           this.scene.restart();
         }
       });
-      y += 28;
+
+      y += 24;
     });
   }
 
-  renderKeybindUI() {
-    this.add.text(550, 230, 'CUSTOM CONTROLS', { fontSize: '16px', fontStyle: 'bold', fill: '#38bdf8' }).setOrigin(0.5);
+  renderKeybindsPanel() {
+    this.add.text(620, 230, 'BINDINGS', { fontFamily: 'Orbitron', fontSize: '13px', fill: '#38bdf8' });
 
-    const keys = Object.keys(userKeybinds);
-    let x = 450;
-    let y = 265;
-
-    keys.forEach((keyName, index) => {
-      const labelText = this.add.text(x, y, `${keyName}:`, { fontSize: '12px', fill: '#cbd5e1' }).setOrigin(1, 0.5);
-      const btnText = this.add.text(x + 10, y, `[ ${userKeybinds[keyName]} ]`, { fontSize: '12px', fill: '#facc15', backgroundColor: '#1e293b', padding: { x: 4, y: 2 } }).setOrigin(0, 0.5).setInteractive();
-
-      btnText.on('pointerdown', () => {
-        if (this.isBinding) return;
-        this.isBinding = true;
-        btnText.setText('[ PRESS KEY ]');
-
-        const keyListener = (e) => {
-          e.preventDefault();
-          userKeybinds[keyName] = e.code.replace('Key', '');
-          saveKeybinds(userKeybinds);
-          window.removeEventListener('keydown', keyListener);
-          this.isBinding = false;
-          this.scene.restart();
-        };
-
-        window.addEventListener('keydown', keyListener);
+    let y = 260;
+    ['up', 'left', 'down', 'right', 'dash', 'tag'].forEach(action => {
+      const keyName = userKeybinds[action];
+      this.add.text(620, y, `${action.toUpperCase()}: ${keyName.replace('Key', '')}`, {
+        fontFamily: 'Inter',
+        fontSize: '11px',
+        fill: '#cbd5e1'
       });
-
-      y += 26;
-      if ((index + 1) % 5 === 0) {
-        x += 200;
-        y = 265;
-      }
-    });
-
-    const resetBtn = this.add.text(550, 460, 'Reset Controls to Default', { fontSize: '12px', fill: '#ef4444' }).setOrigin(0.5).setInteractive();
-    resetBtn.on('pointerdown', () => {
-      userKeybinds = { ...DEFAULT_KEYBINDS };
-      saveKeybinds(userKeybinds);
-      this.scene.restart();
+      y += 22;
     });
   }
 }
@@ -504,45 +627,62 @@ class GameScene extends Phaser.Scene {
   }
 
   init(data) {
-    this.p1ClassKey = data.p1Class || 'RUNNER';
+    this.p1Class = data.p1Class || 'STRIKER';
     this.isVSBot = data.isVSBot || false;
     this.botLevel = data.botLevel || 'MEDIUM';
-    this.matchTimer = 30;
+    this.matchTimer = 45;
   }
 
   create() {
-    this.add.grid(400, 300, 800, 600, 40, 40, 0x0f172a, 1, 0x1e293b, 1);
+    this.add.rectangle(400, 300, 800, 600, 0x020617);
+    this.add.grid(400, 300, 800, 600, 40, 40, 0x0f172a, 0.5, 0x1e293b, 0.8);
 
+    // Map Boundaries & Walls
+    this.obstacles = this.physics.add.staticGroup();
+    this.createArenaWalls();
+
+    // Keybind Mapping
     this.keys = {
-      up: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.up] || userKeybinds.up),
-      left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.left] || userKeybinds.left),
-      down: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.down] || userKeybinds.down),
-      right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.right] || userKeybinds.right),
-      dashUp: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.dashUp] || userKeybinds.dashUp),
-      dashLeft: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.dashLeft] || userKeybinds.dashLeft),
-      dashDown: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.dashDown] || userKeybinds.dashDown),
-      dashRight: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.dashRight] || userKeybinds.dashRight),
-      tag: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes[userKeybinds.tag] || userKeybinds.tag)
+      up: this.input.keyboard.addKey(userKeybinds.up),
+      left: this.input.keyboard.addKey(userKeybinds.left),
+      down: this.input.keyboard.addKey(userKeybinds.down),
+      right: this.input.keyboard.addKey(userKeybinds.right),
+      dash: this.input.keyboard.addKey(userKeybinds.dash),
+      tag: this.input.keyboard.addKey(userKeybinds.tag)
     };
 
     const isHost = this.isVSBot ? true : net.isHost;
-    this.localPlayer = new Player(this, isHost ? 200 : 600, 300, CHARACTERS[this.p1ClassKey], isHost);
+
+    // Spawn Players
+    this.localPlayer = new Player(this, isHost ? 150 : 650, 300, this.p1Class, isHost);
+    this.physics.add.collider(this.localPlayer, this.obstacles);
 
     if (this.isVSBot) {
-      this.remotePlayer = new BotPlayer(this, 600, 300, CHARACTERS.RUNNER, false, this.botLevel);
+      this.remotePlayer = new SmartBot(this, 650, 300, 'STRIKER', false, this.botLevel, this.obstacles);
+      this.physics.add.collider(this.remotePlayer, this.obstacles);
     } else {
-      this.remotePlayer = new Player(this, isHost ? 600 : 200, 300, CHARACTERS.RUNNER, !isHost);
+      this.remotePlayer = new Player(this, isHost ? 650 : 150, 300, 'STRIKER', !isHost);
+      this.physics.add.collider(this.remotePlayer, this.obstacles);
       net.conn.on('data', (data) => this.handleNetworkData(data));
     }
 
-    this.timerText = this.add.text(400, 30, `Time: ${this.matchTimer}`, { fontSize: '24px', fontStyle: 'bold', fill: '#ffffff' }).setOrigin(0.5);
+    // Direct Physical Overlap Collision for Tagging
+    this.physics.add.collider(this.localPlayer, this.remotePlayer);
+
+    // Timer HUD
+    this.timerText = this.add.text(400, 35, `${this.matchTimer}`, {
+      fontFamily: 'Orbitron',
+      fontSize: '28px',
+      fontStyle: '900',
+      fill: '#ffffff'
+    }).setOrigin(0.5);
 
     if (isHost) {
       this.time.addEvent({
         delay: 1000,
         callback: () => {
           this.matchTimer--;
-          this.timerText.setText(`Time: ${this.matchTimer}`);
+          this.timerText.setText(`${this.matchTimer}`);
           if (!this.isVSBot) net.send({ type: 'TIMER', value: this.matchTimer });
           if (this.matchTimer <= 0) this.endMatch();
         },
@@ -551,46 +691,63 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  createArenaWalls() {
+    const wallSpecs = [
+      { x: 400, y: 180, w: 140, h: 28 },
+      { x: 400, y: 420, w: 140, h: 28 },
+      { x: 200, y: 300, w: 28, h: 160 },
+      { x: 600, y: 300, w: 28, h: 160 }
+    ];
+
+    wallSpecs.forEach(spec => {
+      const rect = this.add.rectangle(spec.x, spec.y, spec.w, spec.h, 0x1e293b);
+      rect.setStrokeStyle(2, 0x38bdf8);
+      this.obstacles.add(rect);
+    });
+  }
+
+  checkTagLogic() {
+    // Check tagging every single frame for both local player and AI bot
+    if (this.localPlayer.isIt && this.localPlayer.canTag) {
+      if (this.localPlayer.attemptTag(this.remotePlayer)) {
+        this.cameras.main.shake(120, 0.01);
+        if (!this.isVSBot) net.send({ type: 'TAG_SUCCESS' });
+      }
+    } else if (this.remotePlayer.isIt && this.remotePlayer.canTag) {
+      if (this.remotePlayer.attemptTag(this.localPlayer)) {
+        this.cameras.main.shake(120, 0.01);
+      }
+    }
+  }
+
   update() {
+    let vx = 0;
+    let vy = 0;
+
+    if (this.keys.up.isDown) vy -= 1;
+    if (this.keys.down.isDown) vy += 1;
+    if (this.keys.left.isDown) vx -= 1;
+    if (this.keys.right.isDown) vx += 1;
+
+    const moveVec = new Phaser.Math.Vector2(vx, vy).normalize();
+
     if (!this.localPlayer.isDashing) {
-      let vx = 0;
-      let vy = 0;
-
-      if (this.keys.up.isDown) vy -= 1;
-      if (this.keys.down.isDown) vy += 1;
-      if (this.keys.left.isDown) vx -= 1;
-      if (this.keys.right.isDown) vx += 1;
-
-      const moveVec = new Phaser.Math.Vector2(vx, vy).normalize();
       this.localPlayer.body.setVelocity(moveVec.x * this.localPlayer.stats.speed, moveVec.y * this.localPlayer.stats.speed);
     }
 
-    let dashX = 0;
-    let dashY = 0;
-
-    if (Phaser.Input.Keyboard.JustDown(this.keys.dashUp)) dashY -= 1;
-    if (Phaser.Input.Keyboard.JustDown(this.keys.dashDown)) dashY += 1;
-    if (Phaser.Input.Keyboard.JustDown(this.keys.dashLeft)) dashX -= 1;
-    if (Phaser.Input.Keyboard.JustDown(this.keys.dashRight)) dashX += 1;
-
-    if (dashX !== 0 || dashY !== 0) {
-      const dashVec = new Phaser.Math.Vector2(dashX, dashY).normalize();
-      this.localPlayer.executeDash(dashVec);
+    if (Phaser.Input.Keyboard.JustDown(this.keys.dash) && (vx !== 0 || vy !== 0)) {
+      this.localPlayer.dash(moveVec);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keys.tag)) {
-      if (this.localPlayer.attemptTag(this.remotePlayer)) {
-        this.cameras.main.shake(100, 0.01);
-        if (!this.isVSBot) net.send({ type: 'TAG_SUCCESS' });
-      }
-    }
+    // Run distance tag check every frame
+    this.checkTagLogic();
 
-    this.localPlayer.updateUI();
+    this.localPlayer.renderAura();
 
     if (this.isVSBot) {
-      this.remotePlayer.updateBot(this.localPlayer);
+      this.remotePlayer.updateAI(this.localPlayer);
     } else {
-      this.remotePlayer.updateUI();
+      this.remotePlayer.renderAura();
       net.send({
         type: 'SYNC',
         x: this.localPlayer.x,
@@ -611,24 +768,35 @@ class GameScene extends Phaser.Scene {
       this.remotePlayer.setItState(data.isIt);
       this.localPlayer.setItState(!data.isIt);
     } else if (data.type === 'TAG_SUCCESS') {
-      this.cameras.main.shake(100, 0.01);
+      this.cameras.main.shake(120, 0.01);
       this.localPlayer.setItState(true);
       this.remotePlayer.setItState(false);
     } else if (data.type === 'TIMER') {
       this.matchTimer = data.value;
-      this.timerText.setText(`Time: ${this.matchTimer}`);
+      this.timerText.setText(`${this.matchTimer}`);
       if (this.matchTimer <= 0) this.endMatch();
     }
   }
 
   endMatch() {
     const localWon = !this.localPlayer.isIt;
-    const reward = localWon ? 100 : 25;
-    
-    account.addStats(localWon, reward);
+    const coins = localWon ? 120 : 30;
+    const xp = localWon ? 150 : 50;
 
-    this.add.text(400, 250, localWon ? 'YOU WIN!' : 'YOU LOST!', { fontSize: '40px', fontStyle: 'bold', fill: localWon ? '#22c55e' : '#ef4444' }).setOrigin(0.5);
-    this.add.text(400, 310, `Earned +$${reward} Gold`, { fontSize: '22px', fill: '#facc15' }).setOrigin(0.5);
+    account.addRewards(localWon, coins, xp);
+
+    this.add.text(400, 260, localWon ? 'VICTORY' : 'DEFEAT', {
+      fontFamily: 'Orbitron',
+      fontSize: '42px',
+      fontStyle: '900',
+      fill: localWon ? '#22c55e' : '#ef4444'
+    }).setOrigin(0.5);
+
+    this.add.text(400, 320, `+🪙${coins} Coins   +${xp} XP`, {
+      fontFamily: 'Orbitron',
+      fontSize: '18px',
+      fill: '#facc15'
+    }).setOrigin(0.5);
 
     this.time.delayedCall(2500, () => {
       this.scene.start('MenuScene');
@@ -636,7 +804,7 @@ class GameScene extends Phaser.Scene {
   }
 }
 
-// --- GAME CONFIGURATION ---
+// --- GAME INITIALIZATION ---
 const config = {
   type: Phaser.AUTO,
   width: 800,
@@ -644,10 +812,7 @@ const config = {
   parent: 'game-container',
   physics: {
     default: 'arcade',
-    arcade: {
-      gravity: { y: 0 },
-      debug: false
-    }
+    arcade: { gravity: { y: 0 }, debug: false }
   },
   scene: [MenuScene, GameScene]
 };
